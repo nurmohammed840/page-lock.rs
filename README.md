@@ -1,4 +1,4 @@
-#[Docs](https://docs.rs/page-lock)
+[Docs](https://docs.rs/page-lock)
 
 An async library for locking page address.
 
