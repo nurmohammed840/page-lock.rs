@@ -6,6 +6,15 @@ You may want to use this library to lock spacific page address. (For example dat
 
 #### Example
 
+Add this to your project's `Cargo.toml` file.
+
+```toml
+[dependencies]
+page-lock = "1"
+```
+
+Basic example:
+
 ```rust
 use page_lock::PageLocker;
 use std::sync::Arc;
@@ -30,7 +39,7 @@ tokio::try_join!(
 .unwrap();
 ```
 
-### Locking mechanism
+#### Locking mechanism
 
 You may think something like this: `Map<Number, Mutex>`. where `Number` is page address.
 
