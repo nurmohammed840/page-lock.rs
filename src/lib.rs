@@ -63,25 +63,19 @@ impl<T: Eq + Hash + Copy + Unpin> PageLocker<T> {
     #[inline(always)]
     pub fn unlock(&self, num: T) -> UnLock<T> {
         UnLock {
-            state: self.locker.read().unwrap().get(&num).is_none(),
+            state: !self.is_locked(num),
             locker: &self.locker,
             num,
         }
     }
 
     #[inline(always)]
-    pub async fn lock(&self, num: T) -> LockGuard<'_, T> {
-        self.unlock(num).await;
-        unsafe { self.lock_unchecked(num) }
+    pub fn is_locked(&self, num: T) -> bool {
+        self.locker.read().unwrap().contains_key(&num)
     }
 
-    /// This function is unsafe because it does not check if the page is unlocked.
-    /// Be sure to call `unlock` before calling this function. If you don't, you will get a deadlock.
-    ///
-    /// # Safety
-    /// Caller must ensure that the page is unlocked.
     #[inline(always)]
-    pub unsafe fn lock_unchecked(&self, num: T) -> LockGuard<'_, T> {
+    pub unsafe fn lock(&self, num: T) -> LockGuard<'_, T> {
         self.locker.write().unwrap().insert(num, Vec::new());
         LockGuard {
             num,

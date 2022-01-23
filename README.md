@@ -55,8 +55,6 @@ locking method is `lock(Number)`,
 
 ```
 function Lock(Number):
-    Unlock(Number)
-    
     add a `Mutex` to `Map` by `Number`
 
     return a `LockGuard`:

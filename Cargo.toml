@@ -1,6 +1,6 @@
 [package]
 name = "page-lock"
-version = "1.0.2"
+version = "1.0.3"
 edition = "2018"
 
 description = "A library for reading and writing data from bytes array"
