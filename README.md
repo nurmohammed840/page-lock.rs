@@ -25,7 +25,7 @@ let locker = Arc::new(PageLocker::new());
 let locker1 = locker.clone();
 tokio::try_join!(
     spawn(async move {
-        let _lock = locker.lock(1).await;
+        let _lock = locker.lock(1);
         println!("(1) Page 1: Locked");
         sleep(Duration::from_secs(3)).await;
         println!("(3) Page 1: Droping lock");

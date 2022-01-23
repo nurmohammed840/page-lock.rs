@@ -75,7 +75,7 @@ impl<T: Eq + Hash + Copy + Unpin> PageLocker<T> {
     }
 
     #[inline(always)]
-    pub unsafe fn lock(&self, num: T) -> LockGuard<'_, T> {
+    pub fn lock(&self, num: T) -> LockGuard<'_, T> {
         self.locker.write().unwrap().insert(num, Vec::new());
         LockGuard {
             num,
