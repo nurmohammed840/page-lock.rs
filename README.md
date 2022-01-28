@@ -38,25 +38,3 @@ tokio::try_join!(
 )
 .unwrap();
 ```
-
-#### Locking mechanism
-
-You may think something like this: `Map<Number, Mutex>`. where `Number` is page address.
-
-Unlocking method: `unlock(Number)` does:
-
-```
-function Unlock(Number):
-    if there is any `Mutex` in `Map` by `Number`:
-        wait for it, to get removed. 
-```
-
-locking method is `lock(Number)`,
-
-```
-function Lock(Number):
-    add a `Mutex` to `Map` by `Number`
-
-    return a `LockGuard`:
-        when `LockGuard` is dropped, remove the `Mutex` from `Map` by `Number`.
-```
