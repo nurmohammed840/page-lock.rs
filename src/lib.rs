@@ -1,87 +1,16 @@
-#![doc = include_str!("../README.md")]
+// #![doc = include_str!("../README.md")]
 
+mod mutex;
+mod rw_lock;
+
+use dashmap::DashMap;
 use std::{
-    collections::HashMap,
     future::Future,
     hash::Hash,
     pin::Pin,
-    sync::RwLock,
-    task::{Context, Poll, Waker},
+    task::Waker,
+    task::{Context, Poll},
 };
 
-type Locker<T> = RwLock<HashMap<T, Vec<Waker>>>;
-
-pub struct UnLock<'a, T> {
-    num: T,
-    state: bool,
-    locker: &'a Locker<T>,
-}
-
-impl<'a, T: Unpin + Eq + Hash> Future for UnLock<'a, T> {
-    type Output = ();
-
-    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        if self.state {
-            return Poll::Ready(());
-        }
-        let this = self.get_mut();
-        this.state = true;
-        this.locker
-            .write()
-            .unwrap()
-            .get_mut(&this.num)
-            .unwrap()
-            .push(cx.waker().clone());
-            
-        Poll::Pending
-    }
-}
-
-pub struct LockGuard<'a, T: Eq + Hash> {
-    num: T,
-    locker: &'a Locker<T>,
-}
-
-impl<T: Eq + Hash> Drop for LockGuard<'_, T> {
-    fn drop(&mut self) {
-        for waker in self.locker.write().unwrap().remove(&self.num).unwrap() {
-            waker.wake();
-        }
-    }
-}
-
-#[derive(Default)]
-pub struct PageLocker<T> {
-    locker: Locker<T>,
-}
-
-impl<T: Eq + Hash + Copy + Unpin> PageLocker<T> {
-    pub fn new() -> Self {
-        Self {
-            locker: RwLock::new(HashMap::new()),
-        }
-    }
-
-    #[inline(always)]
-    pub fn unlock(&self, num: T) -> UnLock<T> {
-        UnLock {
-            state: !self.is_locked(num),
-            locker: &self.locker,
-            num,
-        }
-    }
-
-    #[inline(always)]
-    pub fn is_locked(&self, num: T) -> bool {
-        self.locker.read().unwrap().contains_key(&num)
-    }
-
-    #[inline(always)]
-    pub fn lock(&self, num: T) -> LockGuard<'_, T> {
-        self.locker.write().unwrap().insert(num, Vec::new());
-        LockGuard {
-            num,
-            locker: &self.locker,
-        }
-    }
-}
+pub use mutex::{Mutex, WriteGuard};
+pub use rw_lock::{ReadGuard, RwLock};
