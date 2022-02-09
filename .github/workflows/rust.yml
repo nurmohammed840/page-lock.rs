@@ -1,10 +1,6 @@
 name: CI
 
-on:
-  push:
-    branches: [ master ]
-  pull_request:
-    branches: [ master ]
+on: [push, pull_request]
 
 env:
   CARGO_TERM_COLOR: always
@@ -16,7 +12,9 @@ jobs:
 
     steps:
     - uses: actions/checkout@v2
+    
     - name: Run tests
-      run: cargo test --verbose
-    - name: Run Clippy
+      run: cargo test
+
+    - name: Run clippy
       run: cargo clippy

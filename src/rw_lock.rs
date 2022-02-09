@@ -1,3 +1,4 @@
+#![allow(warnings)]
 use super::*;
 
 #[derive(Debug, Default)]
@@ -8,23 +9,22 @@ struct RefCounter {
 
 pub struct RwLock<T> {
     write_lock: Mutex<T>,
-    readers: DashMap<T, RefCounter>,
+    readers: HashMap<T, RefCounter>,
 }
 
 impl<T: Eq + Hash + Copy + Unpin> RwLock<T> {
     pub fn new() -> RwLock<T> {
         RwLock {
             write_lock: Mutex::new(),
-            readers: DashMap::new(),
+            readers: HashMap::new(),
         }
     }
 
     pub async fn read(&self, num: T) -> ReadGuard<'_, T> {
-        self.write_lock.wait_for_unlock(num).await;
-        self.readers
-            .entry(num)
-            .or_insert(RefCounter::default())
-            .count += 1;
+        // self.readers
+        //     .entry(num)
+        //     .or_insert(RefCounter::default())
+        //     .count += 1;
 
         ReadGuard {
             num,
@@ -41,33 +41,33 @@ impl<T: Eq + Hash + Copy + Unpin> RwLock<T> {
 
 pub struct ReadGuard<'a, T: Eq + Hash> {
     num: T,
-    readers: &'a DashMap<T, RefCounter>,
+    readers: &'a HashMap<T, RefCounter>,
 }
 
 impl<'a, T: Eq + Hash> Drop for ReadGuard<'a, T> {
     fn drop(&mut self) {
-        let count = unsafe {
-            let mut rc = self.readers.get_mut(&self.num).unwrap_unchecked();
-            rc.count -= 1;
-            rc.count
-        };
-        if count == 0 {
-            let (_, rc) = unsafe { self.readers.remove(&self.num).unwrap_unchecked() };
-            for waker in rc.wakers {
-                waker.wake();
-            }
-        }
+        // let count = unsafe {
+        //     let mut rc = self.readers.get_mut(&self.num).unwrap_unchecked();
+        //     rc.count -= 1;
+        //     rc.count
+        // };
+        // if count == 0 {
+        //     let (_, rc) = unsafe { self.readers.remove(&self.num).unwrap_unchecked() };
+        //     for waker in rc.wakers {
+        //         waker.wake();
+        //     }
+        // }
     }
 }
 
 struct UntilAllReaderDropped<'a, T> {
     num: T,
     state: bool,
-    readers: &'a DashMap<T, RefCounter>,
+    readers: &'a HashMap<T, RefCounter>,
 }
 
 impl<'a, T> UntilAllReaderDropped<'a, T> {
-    fn new(num: T, readers: &'a DashMap<T, RefCounter>) -> Self {
+    fn new(num: T, readers: &'a HashMap<T, RefCounter>) -> Self {
         Self {
             num,
             readers,
@@ -84,10 +84,10 @@ impl<T: Unpin + Hash + Eq> Future for UntilAllReaderDropped<'_, T> {
         if this.state {
             return Poll::Ready(());
         }
-        match this.readers.get_mut(&this.num) {
-            Some(mut rc) => rc.wakers.push(cx.waker().clone()),
-            None => return Poll::Ready(()),
-        }
+        // match this.readers.get_mut(&this.num) {
+        //     Some(mut rc) => rc.wakers.push(cx.waker().clone()),
+        //     None => return Poll::Ready(()),
+        // }
         this.state = true;
         Poll::Pending
     }

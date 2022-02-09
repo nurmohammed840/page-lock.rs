@@ -26,3 +26,57 @@ fn readiness() {
     assert!(t2.is_woken());
     assert_ready!(t2.poll());
 }
+
+#[tokio::test]
+async fn aborted_future_1() {
+    use std::time::Duration;
+    use tokio::time::{interval, timeout};
+
+    let m1: Arc<Mutex<usize>> = Arc::new(Mutex::new());
+    {
+        let m2 = m1.clone();
+        // Try to lock mutex in a future that is aborted prematurely
+        timeout(Duration::from_millis(1u64), async move {
+            let iv = interval(Duration::from_millis(1000));
+            tokio::pin!(iv);
+            m2.lock(0).await;
+            iv.as_mut().tick().await;
+            iv.as_mut().tick().await;
+        })
+        .await
+        .unwrap_err();
+    }
+    // This should succeed as there is no lock left for the mutex.
+    timeout(Duration::from_millis(1u64), async move {
+        m1.lock(0).await;
+    })
+    .await
+    .expect("Mutex is locked");
+}
+
+#[tokio::test]
+async fn aborted_future_2() {
+    use std::time::Duration;
+    use tokio::time::timeout;
+
+    let m1: Arc<Mutex<usize>> = Arc::new(Mutex::new());
+    {
+        // Lock mutex
+        let _lock = m1.lock(0).await;
+        {
+            let m2 = m1.clone();
+            // Try to lock mutex in a future that is aborted prematurely
+            timeout(Duration::from_millis(1u64), async move {
+                m2.lock(0).await;
+            })
+            .await
+            .unwrap_err();
+        }
+    }
+    // This should succeed as there is no lock left for the mutex.
+    timeout(Duration::from_millis(1u64), async move {
+        m1.lock(0).await;
+    })
+    .await
+    .expect("Mutex is locked");
+}
