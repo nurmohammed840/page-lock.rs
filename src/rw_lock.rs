@@ -1,7 +1,6 @@
-#![allow(warnings)]
 use super::*;
 
-#[derive(Debug, Default)]
+#[derive(Default)]
 struct RefCounter {
     count: usize,
     wakers: Vec<Waker>,
@@ -21,10 +20,12 @@ impl<T: Eq + Hash + Copy + Unpin> RwLock<T> {
     }
 
     pub async fn read(&self, num: T) -> ReadGuard<'_, T> {
-        // self.readers
-        //     .entry(num)
-        //     .or_insert(RefCounter::default())
-        //     .count += 1;
+        self.write_lock.wait_for_unlock(num).await;
+        self.readers
+            .write(num)
+            .entry()
+            .or_insert(RefCounter::default())
+            .count += 1;
 
         ReadGuard {
             num,
@@ -34,29 +35,32 @@ impl<T: Eq + Hash + Copy + Unpin> RwLock<T> {
 
     pub async fn write(&self, num: T) -> WriteGuard<'_, T> {
         let write_guard = self.write_lock.lock(num).await;
-        UntilAllReaderDropped::new(num, &self.readers).await;
+        UntilAllReaderDropped {
+            num,
+            readers: &self.readers,
+            state: false,
+        }
+        .await;
         write_guard
     }
 }
 
-pub struct ReadGuard<'a, T: Eq + Hash> {
+pub struct ReadGuard<'a, T: Eq + Hash + Copy> {
     num: T,
     readers: &'a HashMap<T, RefCounter>,
 }
 
-impl<'a, T: Eq + Hash> Drop for ReadGuard<'a, T> {
+impl<'a, T: Eq + Hash + Copy> Drop for ReadGuard<'a, T> {
     fn drop(&mut self) {
-        // let count = unsafe {
-        //     let mut rc = self.readers.get_mut(&self.num).unwrap_unchecked();
-        //     rc.count -= 1;
-        //     rc.count
-        // };
-        // if count == 0 {
-        //     let (_, rc) = unsafe { self.readers.remove(&self.num).unwrap_unchecked() };
-        //     for waker in rc.wakers {
-        //         waker.wake();
-        //     }
-        // }
+        let mut readers = self.readers.write(self.num);
+        let mut rc = unsafe { readers.get_mut().unwrap_unchecked() };
+        rc.count -= 1;
+        if rc.count == 0 {
+            let rc = unsafe { readers.remove().unwrap_unchecked() };
+            for waker in rc.wakers {
+                waker.wake();
+            }
+        }
     }
 }
 
@@ -66,29 +70,17 @@ struct UntilAllReaderDropped<'a, T> {
     readers: &'a HashMap<T, RefCounter>,
 }
 
-impl<'a, T> UntilAllReaderDropped<'a, T> {
-    fn new(num: T, readers: &'a HashMap<T, RefCounter>) -> Self {
-        Self {
-            num,
-            readers,
-            state: false,
-        }
-    }
-}
-
-impl<T: Unpin + Hash + Eq> Future for UntilAllReaderDropped<'_, T> {
+impl<T: Unpin + Hash + Eq + Copy> Future for UntilAllReaderDropped<'_, T> {
     type Output = ();
-
-    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        let this = self.get_mut();
-        if this.state {
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        if self.state {
             return Poll::Ready(());
         }
-        // match this.readers.get_mut(&this.num) {
-        //     Some(mut rc) => rc.wakers.push(cx.waker().clone()),
-        //     None => return Poll::Ready(()),
-        // }
-        this.state = true;
+        match self.readers.write(self.num).get_mut() {
+            Some(rc) => rc.wakers.push(cx.waker().clone()),
+            None => return Poll::Ready(()),
+        }
+        self.state = true;
         Poll::Pending
     }
 }

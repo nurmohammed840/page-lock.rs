@@ -1,6 +1,6 @@
 [package]
 name = "page-lock"
-version = "2.0.0"
+version = "3.0.0"
 edition = "2018"
 
 description = "A library for reading and writing data from bytes array"
@@ -11,7 +11,7 @@ keywords = ["async", "locking", "lock"]
 
 [dependencies]
 c-map = "0.2"
-tokio = { version = "1", features = ["full"] }
 
 [dev-dependencies]
+tokio = { version = "1", features = ["full"] }
 tokio-test = "0.4"

@@ -6,6 +6,7 @@ pub struct Mutex<T> {
 }
 
 impl<T: Eq + Hash + Copy + Unpin> Mutex<T> {
+    #[inline]
     pub fn new() -> Self {
         Self {
             writers: HashMap::new(),
@@ -18,18 +19,32 @@ impl<T: Eq + Hash + Copy + Unpin> Mutex<T> {
     }
 
     pub async fn lock(&self, num: T) -> WriteGuard<'_, T> {
-        let mut pull_state = PollState::Init;
         UntilUnlocked {
             num,
             writers: &self.writers,
-            state: &mut pull_state,
+            state: false,
+            init: true,
         }
         .await;
+        WriteGuard { num, inner: self }
+    }
 
-        WriteGuard {
+    fn unlock(&self, num: T) {
+        let mut cell = self.writers.write(num);
+        if let Some(waker) = unsafe { cell.get_mut().unwrap_unchecked() }.pop_front() {
+            waker.wake();
+        } else {
+            cell.remove();
+        }
+    }
+
+    #[inline]
+    pub fn wait_for_unlock(&self, num: T) -> UntilUnlocked<T> {
+        UntilUnlocked {
             num,
-            inner: self,
-            state: pull_state,
+            state: false,
+            writers: &self.writers,
+            init: false,
         }
     }
 }
@@ -37,43 +52,38 @@ impl<T: Eq + Hash + Copy + Unpin> Mutex<T> {
 pub struct UntilUnlocked<'a, T> {
     num: T,
     writers: &'a HashMap<T, LinkedList<Waker>>,
-    state: &'a mut PollState,
+    state: bool,
+    init: bool,
 }
 
-impl<T: Unpin + Hash + Eq + Clone> Future for UntilUnlocked<'_, T> {
+impl<T: Unpin + Hash + Eq + Copy> Future for UntilUnlocked<'_, T> {
     type Output = ();
-    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        let this = self.get_mut();
-        *this.state = poll_state_ready!(this.state);
-
-        let mut cell = this.writers.write(this.num.clone());
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        if self.state {
+            return Poll::Ready(());
+        }
+        let mut cell = self.writers.write(self.num);
         match cell.get_mut() {
-            Some(wakers) => {
-                wakers.push_back(cx.waker().clone());
-                Poll::Pending
-            }
+            Some(wakers) => wakers.push_back(cx.waker().clone()),
             None => {
-                cell.insert(LinkedList::new());
-                Poll::Ready(())
+                if self.init {
+                    cell.insert(LinkedList::new());
+                }
+                return Poll::Ready(());
             }
         }
+        self.state = true;
+        Poll::Pending
     }
 }
 
 pub struct WriteGuard<'a, T: Eq + Hash + Unpin + Copy> {
     num: T,
     inner: &'a Mutex<T>,
-    state: PollState,
 }
 
 impl<T: Eq + Hash + Unpin + Copy> Drop for WriteGuard<'_, T> {
     fn drop(&mut self) {
-        self.state = PollState::Ready;
-        let mut cell = self.inner.writers.write(self.num);
-        if let Some(waker) = unsafe { cell.get_mut().unwrap_unchecked() }.pop_front() {
-            waker.wake();
-        } else {
-            cell.remove();
-        }
+        self.inner.unlock(self.num);
     }
 }

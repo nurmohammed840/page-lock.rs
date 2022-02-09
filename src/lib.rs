@@ -1,4 +1,4 @@
-// #![doc = include_str!("../README.md")]
+#![doc = include_str!("../README.md")]
 
 mod mutex;
 mod rw_lock;
@@ -16,40 +16,6 @@ use std::{
 pub use mutex::{Mutex, WriteGuard};
 pub use rw_lock::{ReadGuard, RwLock};
 
-pub(crate) enum PollState {
-    Init,
-    Pending,
-    Ready,
-}
-macro_rules! poll_state_ready {
-    ($state:expr) => {
-        match $state {
-            PollState::Init => PollState::Pending,
-            PollState::Pending => return Poll::Pending,
-            PollState::Ready => return Poll::Ready(()),
-        }
-    };
-}
-pub(crate) use poll_state_ready;
-
-
-// pub(crate) struct Notify<T = ()> {
-//     waker: Waker,
-//     state: Poll<T>,
-// }
-
-// impl<T> Notify<T> {
-//     pub(crate) fn new(waker: Waker) -> Self {
-//         Self {
-//             waker,
-//             state: Poll::Pending,
-//         }
-//     }
-//     pub fn wake(mut self, arg: T) {
-//         self.state = Poll::Ready(arg);
-//         self.waker.wake();
-//     }
-// }
 
 // #[tokio::test]
 // async fn test_rwlock2() {

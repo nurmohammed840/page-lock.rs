@@ -1,5 +1,5 @@
-use std::sync::Arc;
 use page_lock::Mutex;
+use std::sync::Arc;
 use tokio_test::assert_ready;
 use tokio_test::task::spawn;
 
@@ -54,6 +54,8 @@ async fn aborted_future_1() {
     .expect("Mutex is locked");
 }
 
+/// This test is similar to `aborted_future_1` but this time the
+/// aborted future is waiting for the lock.
 #[tokio::test]
 async fn aborted_future_2() {
     use std::time::Duration;
@@ -70,7 +72,7 @@ async fn aborted_future_2() {
                 m2.lock(0).await;
             })
             .await
-            .unwrap_err();
+            .unwrap();
         }
     }
     // This should succeed as there is no lock left for the mutex.

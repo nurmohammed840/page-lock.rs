@@ -10,5 +10,5 @@ Add this to your project's `Cargo.toml` file.
 
 ```toml
 [dependencies]
-page-lock = "2"
+page-lock = "3"
 ```
