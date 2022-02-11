@@ -32,7 +32,7 @@ impl<T: Eq + Hash + Copy + Unpin> RwLock<T> {
         self.readers
             .write(num)
             .entry()
-            .or_insert(RefCounter::default())
+            .or_insert_with(RefCounter::default)
             .count += 1;
 
         ReadGuard {

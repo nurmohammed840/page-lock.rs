@@ -23,7 +23,7 @@ pub(crate) enum PollState {
 }
 
 macro_rules! ret_fut {
-    ($state: expr, $body: expr) => {
+    ($state: expr, $body: block) => {
         match $state {
             PollState::Init => {
                 $body;
