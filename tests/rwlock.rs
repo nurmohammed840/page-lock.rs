@@ -1,8 +1,10 @@
-use std::sync::Arc;
-
-use futures_lite::future;
 use page_lock::RwLock;
 use tokio_test::{assert_ready, task::spawn};
+
+#[cfg(target_arch = "wasm32")]
+use wasm_bindgen_test::wasm_bindgen_test as test;
+// #[cfg(target_arch = "wasm32")]
+// wasm_bindgen_test::wasm_bindgen_test_configure!(run_in_browser);
 
 macro_rules! assert_pending {
     ($result: expr) => {
@@ -103,28 +105,81 @@ fn write_read_shared_drop_pending() {
     assert_ready!(t3.poll());
 }
 
-
-// ========================================================================================
-
-
 #[cfg(not(target_arch = "wasm32"))]
-fn spawn_fut<T: Send + 'static>(f: impl std::future::Future<Output = T> + Send + 'static) -> future::Boxed<T> {
-    use futures_lite::prelude::*;
-
-    let (s, r) = async_channel::bounded(1);
-    std::thread::spawn(move || {
-        future::block_on(async {
-            let _ = s.send(f.await).await;
-        })
+#[tokio::test(flavor = "multi_thread", worker_threads = 8)]
+async fn multithreaded() {
+    use futures::stream::{self, StreamExt};
+    use std::sync::Arc;
+    use tokio::sync::Barrier;
+    static mut C: u32 = 0;
+    let barrier = Arc::new(Barrier::new(5));
+    let rwlock = Arc::new(RwLock::new());
+    let rwclone1 = rwlock.clone();
+    let rwclone2 = rwlock.clone();
+    let rwclone3 = rwlock.clone();
+    let rwclone4 = rwlock.clone();
+    let b1 = barrier.clone();
+    tokio::spawn(async move {
+        stream::iter(0..1000)
+            .for_each(move |_| {
+                let rwlock = rwclone1.clone();
+                async move {
+                    let _guard = rwlock.write(0).await;
+                    unsafe { C += 2 };
+                }
+            })
+            .await;
+        b1.wait().await;
     });
-    async move { r.recv().await.unwrap() }.boxed()
+    let b2 = barrier.clone();
+    tokio::spawn(async move {
+        stream::iter(0..1000)
+            .for_each(move |_| {
+                let rwlock = rwclone2.clone();
+                async move {
+                    let _guard = rwlock.write(0).await;
+                    unsafe { C += 3 };
+                }
+            })
+            .await;
+        b2.wait().await;
+    });
+    let b3 = barrier.clone();
+    tokio::spawn(async move {
+        stream::iter(0..1000)
+            .for_each(move |_| {
+                let rwlock = rwclone3.clone();
+                async move {
+                    let _guard = rwlock.write(0).await;
+                    unsafe { C += 5 };
+                }
+            })
+            .await;
+        b3.wait().await;
+    });
+    let b4 = barrier.clone();
+    tokio::spawn(async move {
+        stream::iter(0..1000)
+            .for_each(move |_| {
+                let rwlock = rwclone4.clone();
+                async move {
+                    let _guard = rwlock.write(0).await;
+                    unsafe { C += 7 };
+                }
+            })
+            .await;
+        b4.wait().await;
+    });
+    barrier.wait().await;
+    let _g = rwlock.read(0).await;
+    assert_eq!(unsafe { C }, 17_000);
 }
 
+// // ========================================================================================
 
 #[test]
-#[cfg_attr(target_arch = "wasm32", wasm_bindgen_test)]
 fn smoke() {
-    future::block_on(async {
+    futures::executor::block_on(async {
         let lock = RwLock::new();
         drop(lock.read(0).await);
         drop(lock.write(0).await);
@@ -133,21 +188,19 @@ fn smoke() {
     });
 }
 
-#[test]
-fn contention() {
+#[cfg(not(target_arch = "wasm32"))]
+#[tokio::test]
+async fn contention() {
     const N: u32 = 10;
     const M: usize = 1000;
-
-    let (tx, rx) = async_channel::unbounded();
-    let tx = Arc::new(tx);
-    let rw = Arc::new(RwLock::new());
-
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+    let tx = std::sync::Arc::new(tx);
+    let rw = std::sync::Arc::new(RwLock::new());
     // Spawn N tasks that randomly acquire the lock M times.
     for _ in 0..N {
         let tx = tx.clone();
         let rw = rw.clone();
-
-        spawn_fut(async move {
+        tokio::spawn(async move {
             for _ in 0..M {
                 if fastrand::u32(..N) == 0 {
                     drop(rw.write(0).await);
@@ -155,13 +208,10 @@ fn contention() {
                     drop(rw.read(0).await);
                 }
             }
-            tx.send(()).await.unwrap();
+            tx.send(()).unwrap();
         });
     }
-
-    future::block_on(async move {
-        for _ in 0..N {
-            rx.recv().await.unwrap();
-        }
-    });
+    for _ in 0..N {
+        rx.recv().await.unwrap();
+    }
 }

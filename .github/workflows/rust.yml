@@ -7,14 +7,21 @@ env:
 
 jobs:
   test:
-
     runs-on: ubuntu-latest
 
     steps:
     - uses: actions/checkout@v2
     
-    - name: Run tests
-      run: cargo test
+    - name: Install wasm-pack
+      run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
 
     - name: Run clippy
       run: cargo clippy
+
+    - name: Run tests
+      run: cargo test
+
+    - name: Run tests on node.js
+      run: wasm-pack test --node
+
+

@@ -4,9 +4,17 @@
 use super::*;
 use std::collections::LinkedList;
 
+struct Waiter {
+    waker: Waker,
+    state: *mut PollState,
+}
+
+unsafe impl Send for Waiter {}
+unsafe impl Sync for Waiter {}
+
 #[derive(Default)]
 pub struct Mutex<T> {
-    map: HashMap<T, LinkedList<(*mut PollState, Waker)>>,
+    map: HashMap<T, LinkedList<Waiter>>,
 }
 
 unsafe impl<T: Send> Send for Mutex<T> {}
@@ -27,10 +35,11 @@ impl<T: Eq + Hash + Copy + Unpin> Mutex<T> {
 
     pub fn unlock(&self, num: T) {
         if let Some(list) = self.map.write(num).remove() {
-            for (state, waker) in list {
+            for waiter in list {
                 // SAFETY: We have exclusive access to the `state`, so it is safe to mutate it.
-                unsafe { *state = PollState::Ready };
-                waker.wake();
+                unsafe { *waiter.state = PollState::Ready };
+                waiter.waker.wake();
+                // unsafe { *state = PollState::Ready };
             }
         }
     }
@@ -48,9 +57,9 @@ impl<T: Eq + Hash + Copy + Unpin> Mutex<T> {
     unsafe fn _wake_next(&self, num: T) {
         let mut cell = self.map.write(num);
         match cell.get_mut().unwrap_unchecked().pop_front() {
-            Some((state, waker)) => {
-                *state = PollState::Ready;
-                waker.wake();
+            Some(waiter) => {
+                *waiter.state = PollState::Ready;
+                waiter.waker.wake();
             }
             None => {
                 cell.remove();
@@ -59,7 +68,7 @@ impl<T: Eq + Hash + Copy + Unpin> Mutex<T> {
     }
 
     pub async fn lock(&self, num: T) -> MutexGuard<'_, T> {
-        let  mutex_guard = MutexGuard { num, inner: self };
+        let mutex_guard = MutexGuard { num, inner: self };
         WaitForUnlock {
             num,
             map: &self.map,
@@ -75,6 +84,9 @@ pub struct MutexGuard<'a, T: Eq + Hash + Copy + Unpin> {
     inner: &'a Mutex<T>,
 }
 
+// impl<T: ?Sized> !Send for MutexGuard<'_, T> {}
+// impl<T: ?Sized + Sync> Sync for MutexGuard<'_, T> {}
+
 impl<'a, T: Eq + Hash + Copy + Unpin> Drop for MutexGuard<'a, T> {
     fn drop(&mut self) {
         // SAFETY: LinkedList is properly initialized.
@@ -84,7 +96,7 @@ impl<'a, T: Eq + Hash + Copy + Unpin> Drop for MutexGuard<'a, T> {
 
 struct WaitForUnlock<'a, T> {
     num: T,
-    map: &'a HashMap<T, LinkedList<(*mut PollState, Waker)>>,
+    map: &'a HashMap<T, LinkedList<Waiter>>,
     state: PollState,
 }
 
@@ -95,7 +107,10 @@ impl<'a, T: Eq + Hash + Copy + Unpin> Future for WaitForUnlock<'a, T> {
         ret_fut!(this.state, {
             let mut cell = this.map.write(this.num);
             match cell.get_mut() {
-                Some(w) => w.push_back((&this.state as *const _ as *mut _, cx.waker().clone())),
+                Some(w) => w.push_back(Waiter {
+                    waker: cx.waker().clone(),
+                    state: &mut this.state,
+                }),
                 None => {
                     cell.insert(LinkedList::new());
                     return Poll::Ready(());
@@ -119,7 +134,10 @@ impl<'a, T: Eq + Hash + Copy + Unpin> Future for UntilUnlocked<'a, T> {
             PollState::Init => {
                 let mut cell = this.inner.map.write(this.num);
                 match cell.get_mut() {
-                    Some(w) => w.push_back((&this.state as *const _ as *mut _, cx.waker().clone())),
+                    Some(w) => w.push_back(Waiter {
+                        waker: cx.waker().clone(),
+                        state: &mut this.state,
+                    }),
                     None => return Poll::Ready(()),
                 }
                 this.state = PollState::Pending;

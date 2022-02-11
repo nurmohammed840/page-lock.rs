@@ -6,6 +6,8 @@ struct RefCounter {
     wakers: Vec<(*mut PollState, Waker)>,
 }
 
+unsafe impl Send for RefCounter {}
+unsafe impl Sync for RefCounter {}
 
 #[derive(Default)]
 pub struct RwLock<T> {
@@ -55,6 +57,9 @@ pub struct ReadGuard<'a, T: Eq + Hash + Copy> {
     num: T,
     readers: &'a HashMap<T, RefCounter>,
 }
+
+// impl<T: ?Sized> !Send for ReadGuard<'_, T> {}
+// impl<T: ?Sized + Sync> Sync for ReadGuard<'_, T> {}
 
 impl<'a, T: Eq + Hash + Copy> Drop for ReadGuard<'a, T> {
     fn drop(&mut self) {

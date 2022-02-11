@@ -14,9 +14,8 @@ c-map = "0.2"
 
 [dev-dependencies]
 tokio-test = "0.4"
-futures-lite = "1.11.0"
+futures = "0.3.21"
 wasm-bindgen-test = "0.3.0"
 
 fastrand = "1.7.0"
-async-channel = "1.6.1"
-tokio = { version = "1", features = ["time"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
