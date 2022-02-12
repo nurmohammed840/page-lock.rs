@@ -41,7 +41,7 @@ impl<T: Eq + Hash + Copy + Unpin> RwLock<T> {
         }
     }
 
-    pub async fn write(&self, num: T) -> MutexGuard<'_, T> {
+    pub async fn write(&self, num: T) -> WriteGuard<'_, T> {
         let guard = self.mutex.lock(num).await;
         UntilAllReaderDropped {
             num,
@@ -90,10 +90,7 @@ impl<T: Unpin + Hash + Eq + Copy> Future for UntilAllReaderDropped<'_, T> {
         let this = self.get_mut();
         ret_fut!(this.state, {
             match this.readers.write(this.num).get_mut() {
-                Some(rc) => rc
-                    .wakers
-                    .push((&this.state as *const _ as *mut _, cx.waker().clone())),
-
+                Some(rc) => rc.wakers.push((&mut this.state, cx.waker().clone())),
                 None => return Poll::Ready(()),
             }
         });

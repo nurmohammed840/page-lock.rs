@@ -13,15 +13,15 @@ use std::{
     task::{Context, Poll},
 };
 
-pub use mutex::{Mutex, MutexGuard};
+pub use mutex::{Mutex, MutexGuard, UntilUnlocked};
 pub use rw_lock::{ReadGuard, RwLock};
+pub type WriteGuard<'a, T> = MutexGuard<'a, T>;
 
 pub(crate) enum PollState {
     Init,
     Pending,
     Ready,
 }
-
 macro_rules! ret_fut {
     ($state: expr, $body: block) => {
         match $state {

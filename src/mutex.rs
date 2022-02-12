@@ -39,7 +39,6 @@ impl<T: Eq + Hash + Copy + Unpin> Mutex<T> {
                 // SAFETY: We have exclusive access to the `state`, so it is safe to mutate it.
                 unsafe { *waiter.state = PollState::Ready };
                 waiter.waker.wake();
-                // unsafe { *state = PollState::Ready };
             }
         }
     }
