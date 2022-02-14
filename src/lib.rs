@@ -3,9 +3,11 @@
 mod mutex;
 mod rw_lock;
 
-use c_map::HashMap;
+pub use mutex::{Mutex, UntilUnlocked, WriteGuard};
+pub use rw_lock::{ReadGuard, RwLock};
 
 use std::{
+    cell::UnsafeCell,
     future::Future,
     hash::Hash,
     pin::Pin,
@@ -13,9 +15,10 @@ use std::{
     task::{Context, Poll},
 };
 
-pub use mutex::{Mutex, MutexGuard, UntilUnlocked};
-pub use rw_lock::{ReadGuard, RwLock};
-pub type WriteGuard<'a, T> = MutexGuard<'a, T>;
+pub(crate) type Map<K, V> = std::sync::Mutex<std::collections::HashMap<K, V>>;
+pub(crate) fn new_map<K, V>() -> std::sync::Mutex<std::collections::HashMap<K, V>> {
+    std::sync::Mutex::new(std::collections::HashMap::new())
+}
 
 pub(crate) enum PollState {
     Init,
@@ -24,15 +27,17 @@ pub(crate) enum PollState {
 }
 macro_rules! ret_fut {
     ($state: expr, $body: block) => {
-        match $state {
-            PollState::Init => {
-                $body;
-                $state = PollState::Pending;
-            }
-            PollState::Ready => return Poll::Ready(()),
-            _ => {}
-        };
-        return Poll::Pending;
+        unsafe {
+            match $state {
+                PollState::Init => {
+                    $body;
+                    $state = PollState::Pending;
+                }
+                PollState::Ready => return Poll::Ready(()),
+                _ => {}
+            };
+            return Poll::Pending;
+        }
     };
 }
 pub(crate) use ret_fut;

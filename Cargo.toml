@@ -1,6 +1,6 @@
 [package]
 name = "page-lock"
-version = "3.0.1"
+version = "3.1.0"
 edition = "2018"
 
 description = "A library for reading and writing data from bytes array"
@@ -10,7 +10,6 @@ license = "MIT"
 keywords = ["async", "locking", "lock"]
 
 [dependencies]
-c-map = "0.2"
 
 [dev-dependencies]
 tokio-test = "0.4"
